@@ -49,7 +49,6 @@ class CompressorThread(QThread):
 
     def __init__(self, input_file, target_size_mb, output_file, scale_pct, fps_target):
         super().__init__()
-        self.setWindowIcon(QIcon,("icon.png"))
         self.input_file = input_file
         self.target_size_mb = target_size_mb
         self.output_file = output_file
@@ -305,7 +304,7 @@ class CompressorApp(QWidget):
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
-    app.setWindowIcon(QIcon("/usr/share/icons/hicolor/128x128/apps/compressor.png"))
+    app.setWindowIcon(QIcon("/usr/share/icons/hicolor/128x128/apps/kompressori.png"))
     window = CompressorApp()
     window.show()
     sys.exit(app.exec())
