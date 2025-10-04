@@ -3,4 +3,6 @@ __pycache__/
 *.pyc
 *.pyo
 .DS_Store
-
+build/
+dist/
+kompressori.spec
