@@ -7,7 +7,7 @@ from PySide6.QtWidgets import (
     QFileDialog, QMessageBox, QProgressBar, QSlider, QComboBox
 )
 from PySide6.QtCore import Qt, QThread, Signal, QTimer
-from PySide6.QtGui import QPalette, QColor
+from PySide6.QtGui import QPalette, QColor, QIcon
 
 def get_duration(filename):
     """Return duration in seconds using ffprobe."""
@@ -49,6 +49,7 @@ class CompressorThread(QThread):
 
     def __init__(self, input_file, target_size_mb, output_file, scale_pct, fps_target):
         super().__init__()
+        self.setWindowIcon(QIcon,("icon.png"))
         self.input_file = input_file
         self.target_size_mb = target_size_mb
         self.output_file = output_file
@@ -105,7 +106,7 @@ class CompressorThread(QThread):
 class CompressorApp(QWidget):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("FFmpeg Video Compressor")
+        self.setWindowTitle("Kompressori")
         self.setMinimumWidth(450)
 
         # ----------------- Color setup -----------------
@@ -191,7 +192,7 @@ class CompressorApp(QWidget):
         # ----------------- Frame rate dropdown -----------------
         self.label_fps = QLabel("Frame rate (fps):")
         self.fps_combo = QComboBox()
-        self.fps_combo.addItems(["15", "24", "30"])
+        self.fps_combo.addItems(["10", "15", "24", "30", "45", "60"])
         self.fps_combo.setCurrentText("24")
 
         # ----------------- Resolution slider -----------------
@@ -304,6 +305,7 @@ class CompressorApp(QWidget):
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
+    app.setWindowIcon(QIcon("/usr/share/icons/hicolor/128x128/apps/compressor.png"))
     window = CompressorApp()
     window.show()
     sys.exit(app.exec())
