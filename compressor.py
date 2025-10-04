@@ -4,9 +4,9 @@ import os
 import glob
 from PySide6.QtWidgets import (
     QApplication, QWidget, QVBoxLayout, QLabel, QPushButton, QLineEdit,
-    QFileDialog, QMessageBox, QProgressBar, QSlider, QComboBox, QHBoxLayout
+    QFileDialog, QMessageBox, QProgressBar, QSlider, QComboBox
 )
-from PySide6.QtCore import Qt, QThread, Signal, QTimer, QCoreApplication
+from PySide6.QtCore import Qt, QThread, Signal, QTimer
 from PySide6.QtGui import QPalette, QColor
 
 def get_duration(filename):
@@ -30,7 +30,6 @@ def get_video_dimensions(filename):
     ).stdout.decode().splitlines()
     width = int(result[0])
     height = int(result[1])
-    # fps = numerator / denominator
     num, den = map(int, result[2].split('/'))
     fps = num / den
     return width, height, fps
@@ -53,7 +52,7 @@ class CompressorThread(QThread):
         self.input_file = input_file
         self.target_size_mb = target_size_mb
         self.output_file = output_file
-        self.scale_pct = scale_pct / 100  # slider value 50% → 0.5
+        self.scale_pct = scale_pct / 100
         self.fps_target = fps_target
 
     def run(self):
@@ -61,12 +60,10 @@ class CompressorThread(QThread):
             duration = get_duration(self.input_file)
             width, height, original_fps = get_video_dimensions(self.input_file)
 
-            # Scale resolution and fps first
             new_width = int(width * self.scale_pct)
             new_height = int(height * self.scale_pct)
-            fps = min(self.fps_target, original_fps)  # don't increase fps
+            fps = min(self.fps_target, original_fps)
 
-            # Calculate bitrate for target size
             target_bitrate = (self.target_size_mb * 1024 * 1024 * 8) / duration
             audio_bitrate = 128 * 1024
             video_bitrate = target_bitrate - audio_bitrate
@@ -75,7 +72,6 @@ class CompressorThread(QThread):
 
             scale_filter = f"scale={new_width}:{new_height}"
 
-            # First pass
             self.progress.emit("Pass 1: Analyzing...")
             subprocess.run([
                 "ffmpeg", "-y", "-i", self.input_file,
@@ -84,7 +80,6 @@ class CompressorThread(QThread):
                 "-pass", "1", "-an", "-f", "mp4", "/dev/null"
             ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
-            # Second pass
             self.progress.emit("Pass 2: Compressing...")
             subprocess.run([
                 "ffmpeg", "-i", self.input_file,
@@ -111,75 +106,135 @@ class CompressorApp(QWidget):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("FFmpeg Video Compressor")
-        self.setMinimumWidth(400)
+        self.setMinimumWidth(450)
+
+        # ----------------- Color setup -----------------
+        primary_color = self.palette().color(QPalette.Highlight)
+        h, s, v, a = primary_color.getHsvF()
+        comp_hue = (h + 0.5) % 1.0
+        secondary_color = QColor.fromHsvF(comp_hue, s, v, a)
+
+        self.primary_hex = primary_color.name()
+        self.secondary_hex = secondary_color.name()
+        self.accent_hex = primary_color.name()
+        self.bg_hex = "#fff0db"
+
+        # ----------------- Global stylesheet -----------------
+        self.setStyleSheet(f"""
+        QWidget {{
+            font-family: 'Segoe UI', Arial, sans-serif;
+            font-size: 14px;
+            color: {self.secondary_hex};
+            background-color: {self.bg_hex};
+        }}
+        QLineEdit {{
+            border: 2px solid {self.secondary_hex};
+            border-radius: 6px;
+            padding: 4px;
+            background-color: #1a1a1a;
+            color: white;
+        }}
+        QLabel {{
+            font-weight: bold;
+            color: {self.accent_hex};
+        }}
+        QPushButton {{
+            background-color: {self.primary_hex};
+            border: 2px solid {self.accent_hex};
+            border-radius: 10px;
+            color: white;
+            font-weight: bold;
+            padding: 6px 12px;
+        }}
+        QPushButton:hover {{
+            background-color: {self.accent_hex};
+            color: {self.bg_hex};
+        }}
+        QProgressBar {{
+            border: 2px solid {self.accent_hex};
+            border-radius: 8px;
+            text-align: center;
+            background-color: #1a1a1a;
+            color: white;
+        }}
+        QProgressBar::chunk {{
+            background-color: {self.primary_hex};
+            width: 20px;
+            margin: 0.5px;
+        }}
+        QComboBox {{
+            border: 2px solid {self.secondary_hex};
+            border-radius: 6px;
+            padding: 4px;
+            background-color: #1a1a1a;
+            color: white;
+        }}
+        QComboBox QAbstractItemView {{
+            background-color: #1a1a1a;
+            selection-background-color: {self.primary_hex};
+            color: white;
+        }}
+        """)
 
         layout = QVBoxLayout()
 
-        # File selection
+        # ----------------- File selection -----------------
         self.label_file = QLabel("Select video file:")
         self.input_file = QLineEdit()
         self.btn_browse = QPushButton("Browse")
         self.btn_browse.clicked.connect(self.browse_file)
 
-        # Target size
+        # ----------------- Target size -----------------
         self.label_size = QLabel("Target size (MB):")
         self.input_size = QLineEdit()
 
-        # Frame rate dropdown
+        # ----------------- Frame rate dropdown -----------------
         self.label_fps = QLabel("Frame rate (fps):")
         self.fps_combo = QComboBox()
         self.fps_combo.addItems(["15", "24", "30"])
         self.fps_combo.setCurrentText("24")
 
-        # Get the system highlight color as a hex string
-        highlight_color = self.palette().color(QPalette.Highlight)
-        h, s, v, a = highlight_color.getHsvF()  # normalized 0-1
-        # Compute complementary hue
-        comp_hue = (h + 0.5) % 1.0
-        comp_color = QColor.fromHsvF(comp_hue, s, v, a)
-        comp_color_hex = comp_color.name()  # use in stylesheet
-
-        # Resolution slider
+        # ----------------- Resolution slider -----------------
         self.label_res = QLabel("Resolution scale: 100%")
         self.res_slider = QSlider(Qt.Horizontal)
-        self.res_slider.setRange(0, 100)  # visual range 0-100
+        self.res_slider.setRange(0, 100)
         self.res_slider.setValue(100)
         self.res_slider.setTickInterval(25)
         self.res_slider.setTickPosition(QSlider.TicksBelow)
         self.res_slider.valueChanged.connect(self.update_res_label)
-
         self.res_slider.setStyleSheet(f"""
         QSlider::groove:horizontal {{
-            height: 8px;
-            border-radius: 4px;
+            height: 12px;
+            border-radius: 6px;
             background: qlineargradient(
                 x1:0, y1:0, x2:1, y2:0,
-                stop:0 {comp_color_hex}, 
-                stop:0.25 {comp_color_hex}, 
-                stop:0.25 {highlight_color.name()}, 
-                stop:1 {highlight_color.name()}
+                stop:0 {self.secondary_hex},
+                stop:0.25 {self.secondary_hex},
+                stop:0.25 {self.primary_hex},
+                stop:1 {self.primary_hex}
             );
         }}
         QSlider::handle:horizontal {{
-            background: white;
-            border: 1px solid gray;
-            width: 14px;
+            background: #1f2041;
+            border: 2px solid {self.accent_hex};
+            width: 20px;
+            height: 20px;
             margin: -4px 0;
-            border-radius: 7px;
+            border-radius: 10px;
         }}
         """)
 
-        # Compress button
+        # ----------------- Compress button -----------------
         self.btn_compress = QPushButton("Compress")
         self.btn_compress.clicked.connect(self.start_compression)
 
-        # Progress bar & label
+        # ----------------- Progress bar & label -----------------
         self.progress = QLabel("")
         self.bar = QProgressBar()
         self.bar.setRange(0, 0)
         self.bar.hide()
 
-        # Layout setup
+        # ----------------- Layout setup -----------------
         layout.addWidget(self.label_file)
         layout.addWidget(self.input_file)
         layout.addWidget(self.btn_browse)
@@ -189,7 +244,6 @@ class CompressorApp(QWidget):
         layout.addWidget(self.fps_combo)
         layout.addWidget(self.label_res)
         layout.addWidget(self.res_slider)
-
         layout.addWidget(self.btn_compress)
         layout.addWidget(self.bar)
         layout.addWidget(self.progress)
@@ -209,7 +263,6 @@ class CompressorApp(QWidget):
             "",
             "Video Files (*.mp4 *.mkv *.mov *.avi *.webm *.flv *.ts *.m4v)"
         )
-
         if file:
             self.input_file.setText(file)
 
@@ -223,7 +276,6 @@ class CompressorApp(QWidget):
             QMessageBox.warning(self, "Error", "Please choose a valid file and target size.")
             return
 
-        # Use unique output filename
         output = get_unique_output(file)
 
         self.thread = CompressorThread(file, float(size), output, scale, fps)
