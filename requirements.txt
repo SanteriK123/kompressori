@@ -1,0 +1,6 @@
+ffmpeg-python==0.2.0
+future==1.0.0
+PySide6==6.9.3
+PySide6_Addons==6.9.3
+PySide6_Essentials==6.9.3
+shiboken6==6.9.3
