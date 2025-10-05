@@ -4,12 +4,14 @@ import sys
 import subprocess
 import os
 import glob
+
 from PySide6.QtWidgets import (
     QApplication, QWidget, QVBoxLayout, QLabel, QPushButton, QLineEdit,
     QFileDialog, QMessageBox, QProgressBar, QSlider, QComboBox
 )
 from PySide6.QtCore import Qt, QThread, Signal, QTimer
 from PySide6.QtGui import QPalette, QColor, QIcon
+from pathlib import Path
 
 def get_duration(filename):
     """Return duration in seconds using ffprobe."""
@@ -45,6 +47,27 @@ def get_unique_output(file):
         counter += 1
     return output
 
+def get_app_icon():
+    # Detect platform
+    if getattr(sys, 'frozen', False):
+        # Running from PyInstaller bundle
+        base_path = Path(sys._MEIPASS)
+    else:
+        # Running from source
+        base_path = Path(__file__).resolve().parent
+
+    # Icon filenames we expect
+    possible_icons = [
+        base_path / "kompressori.png",         # local dev
+        base_path / "icon.png",                # alternative
+        Path("/usr/share/icons/hicolor/128x128/apps/kompressori.png"),  # Linux install path
+    ]
+
+    for icon_path in possible_icons:
+        if icon_path.exists():
+            return QIcon(str(icon_path))
+    return QIcon()  # fallback empty icon
+
 class CompressorThread(QThread):
     progress = Signal(str)
     finished = Signal(bool, str)
@@ -59,6 +82,9 @@ class CompressorThread(QThread):
 
     def run(self):
         try:
+            # Detect OS-specific null device
+            null_device = "NUL" if os.name == "nt" else "/dev/null"
+
             duration = get_duration(self.input_file)
             width, height, original_fps = get_video_dimensions(self.input_file)
 
@@ -74,25 +100,36 @@ class CompressorThread(QThread):
 
             scale_filter = f"scale={new_width}:{new_height}"
 
+            # Use a log file beside the output (so we always have write access)
+            base_name, _ = os.path.splitext(self.output_file)
+            log_file = f"{base_name}_2pass.log"
+
+            # First pass
             self.progress.emit("Pass 1: Analyzing...")
             subprocess.run([
                 "ffmpeg", "-y", "-i", self.input_file,
                 "-vf", scale_filter, "-r", str(fps),
                 "-b:v", f"{v_bitrate_k}k",
-                "-pass", "1", "-an", "-f", "mp4", "/dev/null"
-            ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                "-pass", "1", "-an",
+                "-passlogfile", log_file,
+                "-f", "mp4", null_device
+            ], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
+            # Second pass
             self.progress.emit("Pass 2: Compressing...")
             subprocess.run([
-                "ffmpeg", "-i", self.input_file,
+                "ffmpeg", "-y", "-i", self.input_file,
                 "-vf", scale_filter, "-r", str(fps),
                 "-b:v", f"{v_bitrate_k}k",
                 "-b:a", f"{a_bitrate_k}k",
-                "-pass", "2", self.output_file
-            ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                "-pass", "2",
+                "-passlogfile", log_file,
+                "-c:v", "libx264", "-c:a", "aac",
+                self.output_file
+            ], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
             # Cleanup two-pass log files
-            for f in glob.glob("ffmpeg2pass-*.log*"):
+            for f in glob.glob(f"{base_name}_2pass.log*"):
                 try:
                     os.remove(f)
                 except Exception:
@@ -102,7 +139,6 @@ class CompressorThread(QThread):
             self.finished.emit(True, self.output_file)
         except Exception as e:
             self.finished.emit(False, str(e))
-
 
 class CompressorApp(QWidget):
     def __init__(self):
@@ -302,11 +338,10 @@ class CompressorApp(QWidget):
         else:
             self.progress.setText("❌ Failed.")
             QMessageBox.critical(self, "Error", msg)
-
-
+    
 if __name__ == "__main__":
     app = QApplication(sys.argv)
-    app.setWindowIcon(QIcon("/usr/share/icons/hicolor/128x128/apps/kompressori.png"))
+    app.setWindowIcon(get_app_icon())
     window = CompressorApp()
     window.show()
     sys.exit(app.exec())
