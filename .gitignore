@@ -6,3 +6,6 @@ __pycache__/
 build/
 dist/
 kompressori.spec
+kompressori-1.0.0-1-x86_64.pkg.tar.zst
+pkg/
+src/

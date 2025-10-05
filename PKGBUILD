@@ -26,6 +26,8 @@ package() {
     cat > "$pkgdir/usr/share/applications/kompressori.desktop" << EOF
 [Desktop Entry]
 Name=Kompressori
+Description="Video compression utility"
+Comment="Compresses videos to a desired size"
 Exec=python3 /usr/bin/kompressori
 Icon=kompressori
 Type=Application
